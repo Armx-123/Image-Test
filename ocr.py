@@ -4,6 +4,7 @@ from unittest.mock import patch
 from transformers.dynamic_module_utils import get_imports
 from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoProcessor, AutoModelForCausalLM
+from rembg import remove # NEW: Library to remove backgrounds
 
 # Bypass the flash_attn hardware bug
 def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
@@ -23,7 +24,6 @@ with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
 
 def run_ocr(image_path, output_path):
     original_image = Image.open(image_path).convert("RGB")
-    # Create a copy for drawing highlights so the crop sources remain clean
     highlight_image = original_image.copy()
     
     task_prompt = "<OCR_WITH_REGION>"
@@ -67,26 +67,21 @@ def run_ocr(image_path, output_path):
     smallest_area = float('inf')
 
     for box, label in zip(quad_boxes, labels):
-        # Draw a yellow polygon around the text on the highlighted canvas
         draw.polygon(box, outline="yellow", width=2)
         x1, y1 = box[0], box[1]
         draw.rectangle([x1, y1 - 15, x1 + (len(label) * 6), y1], fill="yellow")
         draw.text((x1 + 2, y1 - 13), label, fill="black", font=font)
         
-        # Calculate bounding box bounds from the 8-point polygon coords [x1,y1,x2,y2,x3,y3,x4,y4]
         x_coords = box[0::2]
         y_coords = box[1::2]
         xmin, xmax = min(x_coords), max(x_coords)
         ymin, ymax = min(y_coords), max(y_coords)
         
-        # Calculate area
         area = (xmax - xmin) * (ymax - ymin)
         
-        # Skip invalid or 0-sized bounding regions
         if area <= 0:
             continue
             
-        # Keep track of largest and smallest boxes
         if area > largest_area:
             largest_area = area
             largest_box = (xmin, ymin, xmax, ymax)
@@ -95,21 +90,21 @@ def run_ocr(image_path, output_path):
             smallest_area = area
             smallest_box = (xmin, ymin, xmax, ymax)
 
-    # Save the full highlighted image
     highlight_image.save(output_path)
     print(f"Main OCR Output saved to {output_path}")
 
-    # Crop and save the largest text box image if found
+    # Crop, remove background, and save as PNG to keep transparency
     if largest_box:
         cropped_largest = original_image.crop(largest_box)
-        cropped_largest.save("largest_text.jpg")
-        print(f"Largest text box cropped and saved (Area: {largest_area:.1f}px)")
+        largest_no_bg = remove(cropped_largest)
+        largest_no_bg.save("largest_text.png")
+        print(f"Largest text box isolated, background removed, and saved as PNG.")
 
-    # Crop and save the smallest text box image if found
     if smallest_box:
         cropped_smallest = original_image.crop(smallest_box)
-        cropped_smallest.save("smallest_text.jpg")
-        print(f"Smallest text box cropped and saved (Area: {smallest_area:.1f}px)")
+        smallest_no_bg = remove(cropped_smallest)
+        smallest_no_bg.save("smallest_text.png")
+        print(f"Smallest text box isolated, background removed, and saved as PNG.")
 
 if __name__ == "__main__":
     input_img = "input.jpg"
