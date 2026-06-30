@@ -48,11 +48,23 @@ jobs:
     - name: Run OCR Highlighting
       run: python ocr.py
 
-    # 6. Commit and push the output image back to the repository
+
+    # 6. Commit and push the output image back to the repository (With race-condition fix)
     - name: Commit and Push Results
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        git add output_detected.jpg
-        git diff-index --quiet HEAD || git commit -m "Automated: Detected objects in image"
-        git push
+        git add output_ocr.jpg
+        
+        # Only commit if changes exist
+        if ! git diff-index --quiet HEAD; then
+          git commit -m "Automated: Highlighted text in image"
+          
+          # Pull the latest remote changes using rebase to avoid conflicts
+          git pull --rebase origin main
+          
+          # Push the synchronized changes
+          git push origin main
+        else
+          echo "No changes to commit."
+        fi
