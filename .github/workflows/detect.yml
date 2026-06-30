@@ -35,13 +35,13 @@ jobs:
         key: ${{ runner.os }}-hf-florence2-${{ hashFiles('detect.py') }}
         restore-keys: |
           ${{ runner.os }}-hf-florence2-
-
-    # 4. Install required dependencies (Fixed the PyTorch wheel URL)
+      
+    # 4. Install required dependencies (Removed nonexistent scalarfast, added safetensors)
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-        pip install transformers timm pillow einops scalarfast
+        pip install transformers timm pillow einops safetensors
 
     # 5. Execute the object detection script
     - name: Run Object Detection
