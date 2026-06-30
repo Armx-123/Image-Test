@@ -134,7 +134,7 @@ def run_ocr(image_path, output_path):
         print(f"Smallest text box isolated, background masked via CV, and saved as PNG.")
 
 if __name__ == "__main__":
-    input_img = "input.jpg"
+    input_img = "inpu.jpg"
     output_img = "output_ocr.jpg"
     
     if os.path.exists(input_img):
