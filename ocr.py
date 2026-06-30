@@ -1,10 +1,11 @@
 import os
 import torch
+import cv2
+import numpy as np
 from unittest.mock import patch
 from transformers.dynamic_module_utils import get_imports
 from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoProcessor, AutoModelForCausalLM
-from rembg import remove # NEW: Library to remove backgrounds
 
 # Bypass the flash_attn hardware bug
 def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
@@ -14,6 +15,34 @@ def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
     if "flash_attn" in imports:
         imports.remove("flash_attn")
     return imports
+
+# --- NEW: Smart Text Masking Logic ---
+def create_text_mask(pil_image):
+    # Convert PIL Image to OpenCV format (NumPy array)
+    cv_img = np.array(pil_image)
+    
+    # Convert to Grayscale for contrast analysis
+    gray = cv2.cvtColor(cv_img, cv2.COLOR_RGB2GRAY)
+    
+    # Determine if the background is light or dark by sampling the four corners
+    h, w = gray.shape
+    corners = [gray[0, 0], gray[0, w-1], gray[h-1, 0], gray[h-1, w-1]]
+    bg_intensity = sum(corners) / 4
+    
+    # Use Otsu's Thresholding to mathematically separate text from background
+    if bg_intensity > 127:
+        # Light background, dark text -> Invert mask so text is opaque (255)
+        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    else:
+        # Dark background, light text -> Standard mask
+        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        
+    # Create a 4-channel image (RGBA) and apply the mathematical mask to the Alpha channel
+    rgba = cv2.cvtColor(cv_img, cv2.COLOR_RGB2RGBA)
+    rgba[:, :, 3] = mask
+    
+    return Image.fromarray(rgba)
+# -------------------------------------
 
 model_id = "microsoft/Florence-2-base"
 print("Loading Florence-2 model for OCR onto CPU...")
@@ -93,18 +122,18 @@ def run_ocr(image_path, output_path):
     highlight_image.save(output_path)
     print(f"Main OCR Output saved to {output_path}")
 
-    # Crop, remove background, and save as PNG to keep transparency
+    # Process crops using the new OpenCV Masking Logic
     if largest_box:
         cropped_largest = original_image.crop(largest_box)
-        largest_no_bg = remove(cropped_largest)
-        largest_no_bg.save("largest_text.png")
-        print(f"Largest text box isolated, background removed, and saved as PNG.")
+        largest_masked = create_text_mask(cropped_largest)
+        largest_masked.save("largest_text.png")
+        print(f"Largest text box isolated, background masked via CV, and saved as PNG.")
 
     if smallest_box:
         cropped_smallest = original_image.crop(smallest_box)
-        smallest_no_bg = remove(cropped_smallest)
-        smallest_no_bg.save("smallest_text.png")
-        print(f"Smallest text box isolated, background removed, and saved as PNG.")
+        smallest_masked = create_text_mask(cropped_smallest)
+        smallest_masked.save("smallest_text.png")
+        print(f"Smallest text box isolated, background masked via CV, and saved as PNG.")
 
 if __name__ == "__main__":
     input_img = "input.jpg"
