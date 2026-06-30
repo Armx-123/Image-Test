@@ -54,7 +54,7 @@ jobs:
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        git add output_ocr.jpg
+        git add output_ocr.jpg largest_text.jpg smallest_text.jpg
         
         # Only commit if changes exist
         if ! git diff-index --quiet HEAD; then
