@@ -1,0 +1,58 @@
+name: Automated Object Detection
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'input.jpg'
+      - 'prompt.txt'
+  # Allows you to trigger the workflow manually from the GitHub UI
+  workflow_dispatch: 
+
+permissions:
+  contents: write 
+
+jobs:
+  detect-objects:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout repository code
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    # 2. Set up Python environment
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    # 3. Cache Hugging Face models to speed up consecutive runs
+    - name: Cache Hugging Face Models
+      uses: actions/cache@v4
+      with:
+        path: ~/.cache/huggingface
+        key: ${{ runner.os }}-hf-florence2-${{ hashFiles('detect.py') }}
+        restore-keys: |
+          ${{ runner.os }}-hf-florence2-
+      
+    # 4. Install required dependencies (Removed nonexistent scalarfast, added safetensors)
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+        pip install transformers==4.44.2 timm pillow einops safetensors
+
+    # 5. Execute the object detection script
+    - name: Run OCR Highlighting
+      run: python ocr.py
+
+    # 6. Commit and push the output image back to the repository
+    - name: Commit and Push Results
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add output_detected.jpg
+        git diff-index --quiet HEAD || git commit -m "Automated: Detected objects in image"
+        git push
