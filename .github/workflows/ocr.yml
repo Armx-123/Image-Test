@@ -1,4 +1,4 @@
-name: Automated Object Detection
+name: Automated OCR
 
 on:
   push:
