@@ -16,33 +16,31 @@ def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
         imports.remove("flash_attn")
     return imports
 
-# --- NEW: Smart Text Masking Logic ---
+# --- NEW: Bulletproof Pixel Majority Masking ---
 def create_text_mask(pil_image):
-    # Convert PIL Image to OpenCV format (NumPy array)
     cv_img = np.array(pil_image)
-    
-    # Convert to Grayscale for contrast analysis
     gray = cv2.cvtColor(cv_img, cv2.COLOR_RGB2GRAY)
     
-    # Determine if the background is light or dark by sampling the four corners
-    h, w = gray.shape
-    corners = [gray[0, 0], gray[0, w-1], gray[h-1, 0], gray[h-1, w-1]]
-    bg_intensity = sum(corners) / 4
+    # 1. Apply Otsu's thresholding blindly
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     
-    # Use Otsu's Thresholding to mathematically separate text from background
-    if bg_intensity > 127:
-        # Light background, dark text -> Invert mask so text is opaque (255)
-        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # 2. Count the pixels of each class
+    white_pixels = cv2.countNonZero(thresh)
+    black_pixels = thresh.size - white_pixels
+    
+    # 3. The background is always the majority class. 
+    # We want the text to be opaque (255) and the background transparent (0).
+    # If there are more white pixels, it means the background became white. Invert it.
+    if white_pixels > black_pixels:
+        mask = cv2.bitwise_not(thresh)
     else:
-        # Dark background, light text -> Standard mask
-        _, mask = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        mask = thresh
         
-    # Create a 4-channel image (RGBA) and apply the mathematical mask to the Alpha channel
     rgba = cv2.cvtColor(cv_img, cv2.COLOR_RGB2RGBA)
     rgba[:, :, 3] = mask
     
     return Image.fromarray(rgba)
-# -------------------------------------
+# -----------------------------------------------
 
 model_id = "microsoft/Florence-2-base"
 print("Loading Florence-2 model for OCR onto CPU...")
