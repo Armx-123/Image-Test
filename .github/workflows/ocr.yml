@@ -37,12 +37,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-hf-florence2-
       
-    # 4. Install required dependencies (Removed nonexistent scalarfast, added safetensors)
+    # 4. Install required dependencies (Swapped rembg for OpenCV)
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
         pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-        pip install transformers==4.44.2 timm pillow einops safetensors rembg onnxruntime
+        pip install transformers==4.44.2 timm pillow einops safetensors opencv-python-headless numpy
 
     # 5. Execute the object detection script
     - name: Run OCR Highlighting
