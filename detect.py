@@ -5,7 +5,6 @@ from transformers.dynamic_module_utils import get_imports
 from PIL import Image, ImageDraw, ImageFont
 from transformers import AutoProcessor, AutoModelForCausalLM
 
-# 1. Workaround to intercept Hugging Face's erroneous flash_attn requirement
 def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
     if not str(filename).endswith("modeling_florence2.py"):
         return get_imports(filename)
@@ -17,18 +16,22 @@ def fixed_get_imports(filename: str | os.PathLike) -> list[str]:
 model_id = "microsoft/Florence-2-base"
 print("Loading Florence-2 model onto CPU...")
 
-# 2. Apply the patch while initializing the Model and Processor
 with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
     model = AutoModelForCausalLM.from_pretrained(model_id, trust_remote_code=True).to("cpu")
     processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
 
-def run_detection(image_path, output_path):
+def run_detection(image_path, output_path, user_prompt):
     image = Image.open(image_path).convert("RGB")
     
-    task_prompt = "<DENSE_REGION_CAPTION>"
-    inputs = processor(text=task_prompt, images=image, return_tensors="pt").to("cpu")
+    # 1. The new task for text-prompted detection
+    task_prompt = "<CAPTION_TO_PHRASE_GROUNDING>"
     
-    print(f"Processing {image_path}...")
+    # 2. Combine the task instruction with your custom text
+    full_prompt = task_prompt + user_prompt
+    
+    inputs = processor(text=full_prompt, images=image, return_tensors="pt").to("cpu")
+    
+    print(f"Searching for '{user_prompt}' in {image_path}...")
     with torch.no_grad():
         generated_ids = model.generate(
             input_ids=inputs["input_ids"],
@@ -37,7 +40,6 @@ def run_detection(image_path, output_path):
             num_beams=3
         )
     
-    # 3. THE FIX: Set skip_special_tokens to False to preserve the bounding box coordinates
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
     
     parsed_answer = processor.post_process_generation(
@@ -48,12 +50,10 @@ def run_detection(image_path, output_path):
     
     detections = parsed_answer[task_prompt]
     
-    # Debug logging to confirm detections in GitHub Actions
     num_detections = len(detections.get('bboxes', []))
-    print(f"Model successfully found {num_detections} objects. Drawing boxes...")
+    print(f"Model successfully found {num_detections} matching objects. Drawing boxes...")
     
     draw = ImageDraw.Draw(image)
-    
     try:
         font = ImageFont.load_default()
     except IOError:
@@ -71,8 +71,17 @@ def run_detection(image_path, output_path):
 if __name__ == "__main__":
     input_img = "input.jpg"
     output_img = "output_detected.jpg"
+    prompt_file = "prompt.txt"
     
+    # 3. Read the custom prompt from a text file
+    if os.path.exists(prompt_file):
+        with open(prompt_file, "r") as f:
+            user_text = f.read().strip()
+    else:
+        # Fallback if you forget to include the text file
+        user_text = "a Kreo Hive 65 mechanical gaming keyboard"
+        
     if os.path.exists(input_img):
-        run_detection(input_img, output_img)
+        run_detection(input_img, output_img, user_text)
     else:
         print(f"Error: {input_img} not found in the repository root.")
