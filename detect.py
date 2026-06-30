@@ -25,11 +25,9 @@ with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
 def run_detection(image_path, output_path):
     image = Image.open(image_path).convert("RGB")
     
-    # 3. Prepare the prompt for automatic out-of-the-box dense labeling
     task_prompt = "<DENSE_REGION_CAPTION>"
     inputs = processor(text=task_prompt, images=image, return_tensors="pt").to("cpu")
     
-    # 4. Generate predictions
     print(f"Processing {image_path}...")
     with torch.no_grad():
         generated_ids = model.generate(
@@ -39,16 +37,21 @@ def run_detection(image_path, output_path):
             num_beams=3
         )
     
-    # 5. Parse answers back to pixel coordinates
-    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
+    # 3. THE FIX: Set skip_special_tokens to False to preserve the bounding box coordinates
+    generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
+    
     parsed_answer = processor.post_process_generation(
         generated_text, 
         task=task_prompt, 
         image_size=(image.width, image.height)
     )
     
-    # 6. Draw bounding boxes and labels onto the image
     detections = parsed_answer[task_prompt]
+    
+    # Debug logging to confirm detections in GitHub Actions
+    num_detections = len(detections.get('bboxes', []))
+    print(f"Model successfully found {num_detections} objects. Drawing boxes...")
+    
     draw = ImageDraw.Draw(image)
     
     try:
