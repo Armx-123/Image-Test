@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'input.jpg'
+      - 'prompt.txt'
   # Allows you to trigger the workflow manually from the GitHub UI
   workflow_dispatch: 
 
