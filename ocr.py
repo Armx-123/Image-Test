@@ -156,7 +156,7 @@ def run_ocr(image_path):
     print(json.dumps(output, indent=4))
 
 if __name__ == "__main__":
-    input_img = "inpu.jpg"
+    input_img = "inpu.png"
     
     if os.path.exists(input_img):
         run_ocr(input_img)
