@@ -21,15 +21,16 @@ with patch("transformers.dynamic_module_utils.get_imports", fixed_get_imports):
     processor = AutoProcessor.from_pretrained(model_id, trust_remote_code=True)
 
 def run_detection(image_path, output_path, user_prompt):
-    image = Image.open(image_path).convert("RGB")
+    # Keep the original image pristine for cropping
+    original_image = Image.open(image_path).convert("RGB")
     
-    # 1. The new task for text-prompted detection
+    # Create a copy specifically for drawing the red boxes
+    highlight_image = original_image.copy()
+    
     task_prompt = "<CAPTION_TO_PHRASE_GROUNDING>"
-    
-    # 2. Combine the task instruction with your custom text
     full_prompt = task_prompt + user_prompt
     
-    inputs = processor(text=full_prompt, images=image, return_tensors="pt").to("cpu")
+    inputs = processor(text=full_prompt, images=original_image, return_tensors="pt").to("cpu")
     
     print(f"Searching for '{user_prompt}' in {image_path}...")
     with torch.no_grad():
@@ -45,40 +46,54 @@ def run_detection(image_path, output_path, user_prompt):
     parsed_answer = processor.post_process_generation(
         generated_text, 
         task=task_prompt, 
-        image_size=(image.width, image.height)
+        image_size=(original_image.width, original_image.height)
     )
     
     detections = parsed_answer[task_prompt]
-    
     num_detections = len(detections.get('bboxes', []))
-    print(f"Model successfully found {num_detections} matching objects. Drawing boxes...")
+    print(f"Model successfully found {num_detections} matching objects. Processing...")
     
-    draw = ImageDraw.Draw(image)
+    draw = ImageDraw.Draw(highlight_image)
     try:
         font = ImageFont.load_default()
     except IOError:
         font = None
 
+    largest_box = None
+    largest_area = -1
+
     for box, label in zip(detections['bboxes'], detections['labels']):
         x1, y1, x2, y2 = box
+        
+        # 1. Calculate the area of the current box
+        area = (x2 - x1) * (y2 - y1)
+        if area > largest_area:
+            largest_area = area
+            largest_box = (x1, y1, x2, y2)
+
+        # 2. Draw on the copy, NOT the original
         draw.rectangle([x1, y1, x2, y2], outline="red", width=3)
         draw.rectangle([x1, y1 - 15, x1 + (len(label) * 6), y1], fill="red")
         draw.text((x1 + 2, y1 - 13), label, fill="white", font=font)
         
-    image.save(output_path)
+    highlight_image.save(output_path)
     print(f"Success! Output saved to {output_path}")
 
+    # 3. Crop out the largest object from the pristine original image
+    if largest_box:
+        cropped_largest = original_image.crop(largest_box)
+        cropped_largest.save("largest_object.jpg")
+        print(f"Largest object isolated and saved as largest_object.jpg (Area: {largest_area:.1f}px)")
+
 if __name__ == "__main__":
-    input_img = "input.jpg"
+    input_img = "inpu.png"
     output_img = "output_detected.jpg"
     prompt_file = "prompt.txt"
     
-    # 3. Read the custom prompt from a text file
     if os.path.exists(prompt_file):
         with open(prompt_file, "r") as f:
             user_text = f.read().strip()
     else:
-        # Fallback if you forget to include the text file
         user_text = "a Kreo Hive 65 mechanical gaming keyboard"
         
     if os.path.exists(input_img):
